@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Hexcode Practice (Ses Aç/Kapa + Feedback)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+
+:root{
+  --bg:url('https://files.catbox.moe/bguhow.png');
+  --accent:#ff8c00;
+  --cyan:#5ab0eb;
+  --dark:rgba(12,14,18,0.85);
+  --tile:rgba(0,0,0,0.6);
+}
+
+html,body{height:100%;margin:0;}
+body{
+  background:var(--bg) center/cover fixed no-repeat;
+  font-family: "Orbitron", monospace;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  color:#e9eef2;
+  position:relative;
+}
+
+.wrap{
+  width:100%;
+  max-width:760px;
+  background: rgba(30,30,30,0.8);
+  backdrop-filter: blur(8px);
+  border-radius: 16px;
+  padding: 30px 40px;
+  box-shadow: 0 0 30px rgba(255,140,0,0.3);
+  transition: box-shadow 0.4s ease, transform 0.3s ease;
+}
+
+.wrap.flash-wrong { box-shadow: 0 0 40px #f70102, 0 0 80px #f70102; }
+.wrap.flash-correct { box-shadow: 0 0 40px #00e776, 0 0 80px #00e776; }
+
+header{ display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+header .logo{font-size:2rem;}
+header h1{ margin:0;font-size:1.5rem;color:var(--accent); }
+
+.top-bubble{
+  background:var(--dark);
+  border:2px solid rgba(90,176,235,0.12);
+  color:#ffd86b;
+  padding:12px;
+  border-radius:10px;
+  font-family: monospace;
+  white-space:pre;
+  margin-bottom:14px;
+  min-height:80px;
+}
+
+.boards{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; }
+.board, .selection { display:grid; grid-template-columns: repeat(3, 64px); gap:8px; padding:8px; }
+.cell, .sel-cell{
+  width:64px;height:64px;
+  background:var(--tile);
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:26px;
+  color:#dbe7ee;
+  border:1px solid rgba(80,80,80,0.25);
+  cursor:pointer;
+  user-select:none;
+  transition:transform .08s ease, box-shadow .12s, color .2s;
+}
+.sel-cell:hover{ transform:translateY(-4px); box-shadow:0 8px 20px rgba(0,0,0,0.5); border-color:var(--cyan); }
+.cell.filled{cursor:default;opacity:0.8;}
+
+.controls{
+  display:flex;
+  gap:10px;
+  justify-content:center;
+  margin-top:20px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+button{
+  color:white;
+  border:none;
+  padding:10px 14px;
+  border-radius:8px;
+  font-weight:700;
+  cursor:pointer;
+  box-shadow:0 6px 18px rgba(0,0,0,0.4);
+}
+#clearBtn{background:#ff4d4d;}
+#enterBtn{background:#4CAF50;}
+button[disabled]{ opacity:0.45; cursor:not-allowed; }
+
+.timer{ color:var(--accent); font-family: monospace; margin-top:10px; text-align:center; }
+.result{ font-weight:700; min-height:26px; text-align:center; margin-top:10px; white-space:pre; }
+.correct-message{ font-weight:700; text-align:center; margin-top:10px; min-height:26px; }
+
+#soundToggleBtn{
+  position:absolute;
+  left:20px;
+  bottom:20px;
+  background:#555;
+  color:white;
+  border:none;
+  padding:6px 12px;
+  border-radius:6px;
+  cursor:pointer;
+  font-weight:700;
+  box-shadow:0 4px 12px rgba(0,0,0,0.3);
+  transition:0.2s;
+}
+#soundToggleBtn:hover{ background:#777; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="logo">🧩</div>
+  <h1>Hexcode Practice</h1>
+</header>
+
+<div class="top-bubble" id="roleDisplay"></div>
+
+<div class="boards">
+  <div>
+    <div style="text-align:center;margin-bottom:8px;color:#9fdfff;font-weight:700;">Your Board</div>
+    <div id="playerBoard" class="board"></div>
+  </div>
+  <div>
+    <div style="text-align:center;margin-bottom:8px;color:#9fdfff;font-weight:700;">Selection (click a symbol)</div>
+    <div id="selectionGrid" class="selection"></div>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="clearBtn">CLEAR</button>
+  <button id="enterBtn">ENTER</button>
+</div>
+
+<div class="timer" id="timer">⏱ 00:00:000</div>
+<div class="correct-message" id="correctMessage"></div>
+<div class="result" id="result"></div>
+
+<!-- Sesler -->
+<audio id="clickSound" src="https://creatorassets.com/cdn/10-click-sound-effects/click-4.mp3" preload="auto"></audio>
+<audio id="correctSound" src="https://files.catbox.moe/9ge99v.mp3" preload="auto"></audio>
+<audio id="wrongSound" src="https://files.catbox.moe/jtryff.mp3" preload="auto"></audio>
+
+<!-- Ses Aç/Kapa -->
+<button id="soundToggleBtn">🔊 ON</button>
+</div>
+
+<script>
+const symbols = ['Σ','ｷ','◆','—','▪','▣','◒','◉','►'];
+const symbolLetters = ['E','T','R','L','S','2S','H','2H','A'];
+
+let targetGrid = [];
+let targetSymbolMap = {};
+let playerGrid = [];
+let lockedCells = {};
+let gameOver = false;
+let startTime = null;
+let timerInterval = null;
+
+const roleDisplay = document.getElementById('roleDisplay');
+const playerBoardEl = document.getElementById('playerBoard');
+const selectionGridEl = document.getElementById('selectionGrid');
+const clearBtn = document.getElementById('clearBtn');
+const enterBtn = document.getElementById('enterBtn');
+const timerEl = document.getElementById('timer');
+const resultEl = document.getElementById('result');
+const correctMessage = document.getElementById('correctMessage');
+
+const clickSound = document.getElementById('clickSound');
+const correctSound = document.getElementById('correctSound');
+const wrongSound = document.getElementById('wrongSound');
+
+let soundEnabled = true;
+const soundToggleBtn = document.getElementById('soundToggleBtn');
+soundToggleBtn.addEventListener('click', () => {
+  soundEnabled = !soundEnabled;
+  soundToggleBtn.textContent = soundEnabled ? '🔊 ON' : '🔇 OFF';
+});
+
+function playSound(type){
+  if(!soundEnabled) return;
+  let sound;
+  switch(type){
+    case 'click': sound = clickSound; break;
+    case 'correct': sound = correctSound; break;
+    case 'wrong': sound = wrongSound; break;
+    default: return;
+  }
+  sound.currentTime=0;
+  sound.play();
+}
+
+function pad(n,d=2){return String(n).padStart(d,'0')}
+function formatTime(ms){
+  const m=Math.floor(ms/60000);
+  const s=Math.floor((ms%60000)/1000);
+  const msr=ms%1000;
+  return `${pad(m)}:${pad(s)}:${String(msr).padStart(3,'0')}`;
+}
+function startTimer(){if(startTime) return; startTime = Date.now(); timerInterval=setInterval(()=>{ timerEl.textContent='⏱ '+formatTime(Date.now()-startTime); },40);}
+function stopTimer(){clearInterval(timerInterval); return Date.now()-startTime;}
+function shuffle(a){return a.slice().sort(()=>Math.random()-0.5)}
+
+function initGame(){
+  clearInterval(timerInterval);
+  startTime=null;
+  timerEl.textContent='⏱ 00:00:000';
+  resultEl.textContent='';
+  gameOver=false;
+  lockedCells={};
+  playerGrid=Array.from({length:3},()=>Array(3).fill(''));
+  targetGrid=Array.from({length:3},()=>Array(3).fill('-'));
+  targetSymbolMap={};
+
+  const indices=shuffle([...Array(symbols.length).keys()]).slice(0,4);
+  const pos=shuffle([...Array(9).keys()]).slice(0,4);
+  for(let i=0;i<4;i++){
+    const idx=indices[i];
+    const p=pos[i];
+    const r=Math.floor(p/3),c=p%3;
+    targetGrid[r][c]=symbolLetters[idx];
+    targetSymbolMap[`${r},${c}`]=symbols[idx];
+  }
+  renderRole();
+  clearBoard(false);
+}
+
+function renderRole(){
+  roleDisplay.textContent = targetGrid.map((row,r)=>{
+    return 'ROLE1: '+row.map(cell => cell==='-' ? '-' : cell).join(' ');
+  }).join('\n');
+}
+
+function renderBoard(){
+  playerBoardEl.innerHTML='';
+  for(let r=0;r<3;r++){
+    for(let c=0;c<3;c++){
+      const div=document.createElement('div');
+      div.className='cell';
+      div.dataset.r=r; div.dataset.c=c;
+      div.textContent=playerGrid[r][c];
+      playerBoardEl.appendChild(div);
+    }
+  }
+}
+
+function genSelection(){
+  selectionGridEl.innerHTML='';
+  const unfound=[];
+  for(let r=0;r<3;r++){
+    for(let c=0;c<3;c++){
+      const key = `${r},${c}`;
+      if(targetGrid[r][c]!=='-' && !lockedCells[key]) unfound.push(key);
+    }
+  }
+  if(unfound.length===0) return;
+  const chosen = unfound[Math.floor(Math.random()*unfound.length)];
+  const [cr,cc]=chosen.split(',').map(Number);
+  const correct=targetSymbolMap[chosen];
+  const wrongPool=symbols.filter(s=>!Object.values(targetSymbolMap).includes(s));
+  const grid=Array.from({length:3},()=>Array(3).fill(''));
+  grid[cr][cc]=correct;
+  const pool=shuffle(wrongPool);
+  let i=0;
+  for(let r=0;r<3;r++){
+    for(let c=0;c<3;c++){
+      if(!grid[r][c]){
+        if(i>=pool.length) i=0;
+        grid[r][c]=pool[i++];
+      }
+    }
+  }
+  for(let r=0;r<3;r++){
+    for(let c=0;c<3;c++){
+      const div=document.createElement('div');
+      div.className='sel-cell';
+      div.dataset.r=r; div.dataset.c=c;
+      div.textContent=grid[r][c];
+      div.addEventListener('click',onSelect);
+      selectionGridEl.appendChild(div);
+    }
+  }
+}
+
+function onSelect(e){
+  if(gameOver) return;
+  const r=+e.currentTarget.dataset.r;
+  const c=+e.currentTarget.dataset.c;
+  const key = `${r},${c}`;
+  const sym = e.currentTarget.textContent;
+
+  playSound('click');
+
+  if(!startTime) startTimer();
+  if(lockedCells[key]) return;
+  playerGrid[r][c] = sym;
+  lockedCells[key] = true;
+  renderBoard();
+  const remaining=Object.keys(targetSymbolMap).filter(k=>!lockedCells[k]);
+  if(remaining.length===0) gameOver=true;
+  else genSelection();
+}
+
+function clearBoard(resetTimer=true){
+  playSound('click');
+  playerGrid = Array.from({length:3},()=>Array(3).fill(''));
+  lockedCells = {};
+  renderBoard();
+  genSelection();
+  resultEl.textContent='';
+  gameOver=false;
+  if(resetTimer){
+    startTime = null;
+    timerEl.textContent='⏱ 00:00:000';
+  }
+}
+
+function enterAction(){
+  playSound('click');
+  let wrongs = [];
+  for(let r=0;r<3;r++){
+    for(let c=0;c<3;c++){
+      const key=`${r},${c}`;
+      const target=targetSymbolMap[key];
+      if(!target) continue;
+      if(playerGrid[r][c]!==target) wrongs.push(key);
+    }
+  }
+  const currentTime = startTime ? Date.now()-startTime : 0;
+
+  if(wrongs.length===0){
+    flashCorrectMenu();
+    correctMessage.style.color = '#8ef0a4';
+    correctMessage.textContent = `Last try was Correct in ${formatTime(currentTime)}`;
+    playSound('correct');
+    stopTimer();
+    setTimeout(()=>{ initGame(); }, 500);
+  } else {
+    flashWrongMenu();
+    correctMessage.style.color = '#ff4d4d';
+    correctMessage.textContent = `Last try was Incorrect in ${formatTime(currentTime)}`;
+    playSound('wrong');
+    clearBoard(false);
+  }
+}
+
+function flashWrongMenu(){
+  const wrap = document.querySelector('.wrap');
+  wrap.classList.add('flash-wrong');
+  setTimeout(()=> wrap.classList.remove('flash-wrong'), 3000);
+}
+function flashCorrectMenu(){
+  const wrap = document.querySelector('.wrap');
+  wrap.classList.add('flash-correct');
+  setTimeout(()=> wrap.classList.remove('flash-correct'), 3000);
+}
+
+clearBtn.addEventListener('click',()=>clearBoard(false));
+enterBtn.addEventListener('click',enterAction);
+
+initGame();
+</script>
+</body>
+</html>
